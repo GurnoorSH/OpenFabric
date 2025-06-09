@@ -1,199 +1,155 @@
+# 🎨 AI Creative Pipeline
 
-# 🚀 The AI Developer Challenge
+A powerful end-to-end pipeline that transforms text prompts into stunning images and interactive 3D models using Openfabric's AI services and local LLM capabilities.
 
-### Make Something Insanely Great
-Welcome. This isn’t just a coding task. This is a mission. A calling for the bold and curious—those who dare to think
-differently. If you're ready to build something magical, something powerful, something *insanely great*—read on.
+## 🌟 Features
 
----
+- **Text-to-Image Generation**: Convert text descriptions into high-quality images
+- **Image-to-3D Conversion**: Transform 2D images into interactive 3D models
+- **Local LLM Integration**: Uses local language models for prompt understanding and expansion
+- **Memory System**: Maintains both short-term and long-term memory of generated content
+- **User-Friendly Interface**: Streamlit-based web interface for easy interaction
 
-## 🌟 The Vision
+## 🛠️ Technical Architecture
 
-Imagine this:  
-A user types a simple idea —
-> “Make me a glowing dragon standing on a cliff at sunset.”
+### Core Components
 
-And your app...
+1. **Local LLM (Language Model)**
+   - Handles prompt understanding and expansion
+   - Generates embeddings for memory retrieval
+   - Uses efficient local models for privacy and performance
 
-- Understands the request using a local LLM.
-- Generates stunning visuals from text.
-- Transforms that image into an interactive 3D model.
-- Remembers it. Forever.
+2. **Openfabric Integration**
+   - Text-to-Image App: `c25dcd829d134ea98f5ae4dd311d13bc.node3.openfabric.network`
+   - Image-to-3D App: `f0b5f319156c4819b9827000b17e511a.node3.openfabric.network`
+   - Secure WebSocket connections for real-time communication
 
-You're not building an app. You're building **a creative partner**.
+3. **Memory System**
+   - Short-term: Session-based context management
+   - Long-term: Persistent storage of generated content
+   - Semantic search capabilities for content retrieval
 
----
+4. **File Management**
+   - Organized storage of generated images and 3D models
+   - Automatic file naming and organization
+   - Efficient resource management
 
-## 🎯 The Mission
+## 🚀 Getting Started
 
-Create an intelligent, end-to-end pipeline powered by Openfabric and a locally hosted LLM:
+### Prerequisites
 
-### Step 1: Understand the User
+- Python 3.8 or higher
+- Openfabric account and API access
+- Local LLM setup (DeepSeek or Llama)
 
-Use a local LLM like **DeepSeek** or **Llama** to:
+### Installation
 
-- Interpret prompts
-- Expand them creatively
-- Drive meaningful, artistic input into the generation process
+1. Clone the repository:
+   ```bash
+   git clone [repository-url]
+   cd ai-test
+   ```
 
-### Step 2: Bring Ideas to Life
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-Chain two Openfabric apps together:
+3. Configure Openfabric:
+   - Update `config/state.json` with your Openfabric app IDs
+   - Ensure proper authentication is set up
 
-- **Text to Image**  
-  App ID: `f0997a01-d6d3-a5fe-53d8-561300318557`  
-  [View on Openfabric](https://openfabric.network/app/view/f0997a01-d6d3-a5fe-53d8-561300318557)
+### Running the Application
 
-- **Image to 3D**  
-  App ID: `69543f29-4d41-4afc-7f29-3d51591f11eb`  
-  [View on Openfabric](https://openfabric.network/app/view/69543f29-4d41-4afc-7f29-3d51591f11eb)
+1. Start the application:
+   ```bash
+   python app/streamlit_app.py
+   ```
 
-Use their **manifest** and **schema** dynamically to structure requests.
+2. Access the web interface:
+   - Open your browser and navigate to `http://localhost:8501`
 
-### Step 3: Remember Everything
+## 💡 Usage Guide
 
-Build memory like it matters.
+1. **Text Prompt Input**
+   - Enter a descriptive text prompt
+   - The system will automatically expand and enhance your prompt
 
-- 🧠 **Short-Term**: Session context during a single interaction
-- 💾 **Long-Term**: Persistence across sessions using SQLite, Redis, or flat files  
-  Let the AI recall things like:
+2. **Image Generation**
+   - The system generates an image based on your prompt
+   - View and download the generated image
 
-> “Generate a new robot like the one I created last Thursday — but this time, with wings.”
+3. **3D Model Creation**
+   - The generated image is automatically converted to a 3D model
+   - Interactive 3D viewer available in the interface
 
----
+4. **Memory and History**
+   - Access previously generated content
+   - Search through your creation history
+   - Reference past generations for new creations
 
-## 🛠 The Pipeline
+## 🔧 Configuration
 
-User Prompt
-↓
-Local LLM (DeepSeek or LLaMA)
-↓
-Text-to-Image App (Openfabric)
-↓
-Image Output
-↓
-Image-to-3D App (Openfabric)
-↓
-3D Model Output
+### App Configuration
 
-Simple. Elegant. Powerful.
+The application can be configured through `config/state.json`:
 
----
-
-## 📦 Deliverables
-
-What we expect:
-
-- ✅ Fully working Python project
-- ✅ `README.md` with clear instructions
-- ✅ Prompt → Image → 3D working example
-- ✅ Logs or screenshots
-- ✅ Memory functionality (clearly explained)
-
----
-
-## 🧠 What We’re Really Testing
-
-- Your grasp of the **Openfabric SDK** (`Stub`, `Remote`, `schema`, `manifest`)
-- Your **creativity** in prompt-to-image generation
-- Your **engineering intuition** with LLMs
-- Your ability to manage **context and memory**
-- Your **attention to quality** — code, comments, and clarity
-
----
-
-## 🚀 Bonus Points
-
-- 🎨 Visual GUI with Streamlit or Gradio
-- 🔍 FAISS/ChromaDB for memory similarity
-- 🗂 Local browser to explore generated 3D assets
-- 🎤 Voice-to-text interaction
-
----
-
-## ✨ Example Experience
-
-Prompt:
-> “Design a cyberpunk city skyline at night.”
-
-→ LLM expands into vivid, textured visual descriptions  
-→ Text-to-Image App renders a cityscape  
-→ Image-to-3D app converts it into depth-aware 3D  
-→ The system remembers the request for remixing later
-
-That’s not automation. That’s imagination at scale.
-
----
-
-## 💡 Where to start
-You’ll find the project structure set, the entrypoint is in `main.py` file.
-```python
-############################################################
-# Execution callback function
-############################################################
-def execute(model: AppModel) -> None:
-    """
-    Main execution entry point for handling a model pass.
-
-    Args:
-        model (AppModel): The model object containing request and response structures.
-    """
-
-    # Retrieve input
-    request: InputClass = model.request
-
-    # Retrieve user config
-    user_config: ConfigClass = configurations.get('super-user', None)
-    logging.info(f"{configurations}")
-
-    # Initialize the Stub with app IDs
-    app_ids = user_config.app_ids if user_config else []
-    stub = Stub(app_ids)
-
-    # ------------------------------
-    # TODO : add your magic here
-    # ------------------------------
-                                
-                                
-                                
-    # Prepare response
-    response: OutputClass = model.response
-    response.message = f"Echo: {request.prompt}"
+```json
+{
+  "super-user": {
+    "app_ids": [
+      "c25dcd829d134ea98f5ae4dd311d13bc.node3.openfabric.network",
+      "f0b5f319156c4819b9827000b17e511a.node3.openfabric.network"
+    ]
+  }
+}
 ```
 
-Given schema, stub implementation and all the details you should be able to figure out how eventing works but as an
-extra hint (if needed) here is an example of calling and app get the value and save it as an image:
-```python
-    # Call the Text to Image app
-    object = stub.call('c25dcd829d134ea98f5ae4dd311d13bc.node3.openfabric.network', {'prompt': 'Hello World!'}, 'super-user')
-    image = object.get('result')
-    # save to file
-    with open('output.png', 'wb') as f:
-        f.write(image)
+### Environment Variables
+
+- `OPENFABRIC_API_KEY`: Your Openfabric API key
+- `LLM_MODEL_PATH`: Path to your local LLM model
+- `STORAGE_PATH`: Custom storage location for generated content
+
+## 📁 Project Structure
+
+```
+ai-test/
+├── app/
+│   ├── core/
+│   │   ├── llm.py
+│   │   ├── memory.py
+│   │   ├── remote.py
+│   │   └── stub.py
+│   ├── config/
+│   │   ├── state.json
+│   │   └── properties.json
+│   ├── generated/
+│   │   ├── images/
+│   │   └── models/
+│   ├── streamlit_app.py
+│   └── main.py
+├── requirements.txt
+└── readme.md
 ```
 
-## How to start
-The application can be executed in two different ways:
-* locally by running the `start.sh` 
-* on in a docker container using `Dockerfile`
+## 🔒 Security Considerations
 
-If all is fine you should be able to access the application on `http://localhost:8888/swagger-ui/#/App/post_execution` and see the following screen:
+- All API keys and sensitive data are stored securely
+- Local LLM processing ensures data privacy
+- Secure WebSocket connections for Openfabric communication
+- Input validation and sanitization
 
-![Swagger UI](./swagger-ui.png)
+## 🤝 Contributing
 
-## Ground Rules
-Step up with any arsenal (read: libraries or packages) you believe in, but remember:
-* 👎 External services like chatGPT are off-limits. Stand on your own.
-* 👎 Plagiarism is for the weak. Forge your own path.
-* 👎 A broken app equals failure. Non-negotiable.
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-## This Is It
-We're not just evaluating a project; we're judging your potential to revolutionize our 
-landscape. A half-baked app won’t cut it.
+## 📝 License
 
-We're zeroing in on:
-* 👍 Exceptional documentation.
-* 👍 Code that speaks volumes.
-* 👍 Inventiveness that dazzles.
-* 👍 A problem-solving beast.
-* 👍 Unwavering adherence to the brief
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🙏 Acknowledgments
+
+- Openfabric for providing the AI services
+- The open-source community for various tools and libraries
+- Contributors and maintainers of the project

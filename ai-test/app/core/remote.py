@@ -36,9 +36,19 @@ class Remote:
 
         Returns:
             Remote: The current instance for chaining.
+
+        Raises:
+            Exception: If the connection fails to establish.
         """
-        self.client = Proxy(self.proxy_url, self.proxy_tag, ssl_verify=False)
-        return self
+        try:
+            self.client = Proxy(self.proxy_url, self.proxy_tag, ssl_verify=False)
+            # Test the connection with a simple request
+            test_result = self.client.request({"test": "connection"}, "test-connection")
+            if test_result is None:
+                raise Exception("Failed to establish WebSocket connection")
+            return self
+        except Exception as e:
+            raise Exception(f"Failed to connect to {self.proxy_url}: {str(e)}")
 
     # ----------------------------------------------------------------------
     def execute(self, inputs: dict, uid: str) -> Union[ExecutionResult, None]:
@@ -51,11 +61,20 @@ class Remote:
 
         Returns:
             Union[ExecutionResult, None]: The result of the execution, or None if not connected.
+
+        Raises:
+            Exception: If the client is not connected or the request fails.
         """
         if self.client is None:
-            return None
+            raise Exception("Not connected to proxy service")
 
-        return self.client.request(inputs, uid)
+        try:
+            result = self.client.request(inputs, uid)
+            if result is None:
+                raise Exception("No response received from proxy service")
+            return result
+        except Exception as e:
+            raise Exception(f"Failed to execute request: {str(e)}")
 
     # ----------------------------------------------------------------------
     @staticmethod
@@ -73,15 +92,23 @@ class Remote:
             Exception: If the request failed or was cancelled.
         """
         if output is None:
-            return None
+            raise Exception("No output result provided")
 
-        output.wait()
-        status = str(output.status()).lower()
-        if status == "completed":
-            return output.data()
-        if status in ("cancelled", "failed"):
-            raise Exception("The request to the proxy app failed or was cancelled!")
-        return None
+        try:
+            output.wait()
+            status = str(output.status()).lower()
+            if status == "completed":
+                data = output.data()
+                if data is None:
+                    raise Exception("No data received in completed response")
+                return data
+            if status == "cancelled":
+                raise Exception("The request was cancelled by the proxy service")
+            if status == "failed":
+                raise Exception("The request failed in the proxy service")
+            raise Exception(f"Unknown status received: {status}")
+        except Exception as e:
+            raise Exception(f"Error processing response: {str(e)}")
 
     # ----------------------------------------------------------------------
     def execute_sync(self, inputs: dict, configs: dict, uid: str) -> Union[dict, None]:
@@ -95,9 +122,15 @@ class Remote:
 
         Returns:
             Union[dict, None]: The processed response, or None if not connected.
+
+        Raises:
+            Exception: If the client is not connected or the request fails.
         """
         if self.client is None:
-            return None
+            raise Exception("Not connected to proxy service")
 
-        output = self.client.execute(inputs, configs, uid)
-        return Remote.get_response(output)
+        try:
+            output = self.client.execute(inputs, configs, uid)
+            return Remote.get_response(output)
+        except Exception as e:
+            raise Exception(f"Failed to execute synchronous request: {str(e)}")
