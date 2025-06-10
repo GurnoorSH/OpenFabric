@@ -249,7 +249,17 @@ ai-test/
    - Test edge cases
    - Verify error handling
 
+
 ## Support and Contact
+{
+  "app_ids": [
+    "f0997a01-d6d3-a5fe-53d8-561300318557",
+    "69543f29-4d41-4afc-7f29-3d51591f11eb"
+  ]
+}
+
+super-user
+
 
 For support and questions:
 - Open an issue on GitHub
