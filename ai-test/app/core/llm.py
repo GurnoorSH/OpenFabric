@@ -10,6 +10,8 @@ class LocalLLM:
         # Force CPU to avoid CUDA issues
         self.device = 'cpu'
         self.embedding_model.to(self.device)
+        # Disable gradient computation
+        torch.set_grad_enabled(False)
 
     def get_embedding(self, text: str) -> np.ndarray:
         """Get embedding for a text using the model."""

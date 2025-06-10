@@ -2,7 +2,7 @@ import json
 import logging
 import pprint
 import time
-from typing import Any, Dict, List, Literal, Tuple
+from typing import Any, Dict, List, Literal, Tuple, Optional
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -33,163 +33,134 @@ class Stub:
     # ----------------------------------------------------------------------
     def __init__(self, app_ids: List[str], max_retries: int = 3, retry_delay: int = 5, require_all_apps: bool = False):
         """
-        Initializes the Stub instance by loading manifests, schemas, and connections
-        for each given app ID.
-
+        Initialize the Stub with Openfabric app IDs and retry configuration.
+        
         Args:
-            app_ids (List[str]): A list of application identifiers (hostnames or URLs).
-            max_retries (int): Maximum number of retry attempts for failed requests.
-            retry_delay (int): Delay in seconds between retry attempts.
-            require_all_apps (bool): If True, raises an exception if any app fails to initialize.
+            app_ids: List of Openfabric app IDs
+            max_retries: Maximum number of retry attempts
+            retry_delay: Delay between retries in seconds
+            require_all_apps: Whether to require all apps to be available
         """
         self._schema: Schemas = {}
         self._manifest: Manifests = {}
         self._connections: Connections = {}
-        self._initialized_apps: List[str] = []
-        self._max_retries = max_retries
-        self._retry_delay = retry_delay
-        self._require_all_apps = require_all_apps
-
-        # Configure retry strategy
+        self.app_ids = app_ids
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
+        self.require_all_apps = require_all_apps
+        self.initialized_apps = set()
+        self.failed_apps = set()
+        
+        # Configure session with retry strategy
+        self.session = requests.Session()
         retry_strategy = Retry(
             total=max_retries,
-            backoff_factor=1,
-            status_forcelist=[500, 502, 503, 504]
+            backoff_factor=retry_delay,
+            status_forcelist=[500, 502, 503, 504],
+            allowed_methods=["GET", "POST"]
         )
-        self._session = requests.Session()
-        self._session.mount("https://", HTTPAdapter(max_retries=retry_strategy))
-
-        failed_apps = []
-        for app_id in app_ids:
-            base_url = app_id.strip('/')
-            retry_count = 0
-
-            while retry_count < max_retries:
-                try:
-                    # Fetch manifest with increased timeout and response validation
-                    manifest_url = f"https://{base_url}/manifest"
-                    logging.info(f"[{app_id}] Fetching manifest from: {manifest_url}")
-                    manifest_response = self._session.get(manifest_url, timeout=30)
-                    manifest_response.raise_for_status()
-                    
-                    if not manifest_response.text:
-                        raise Exception("Empty response received from manifest endpoint")
-                    
-                    manifest = manifest_response.json()
-                    logging.info(f"[{app_id}] Manifest loaded: {manifest}")
-                    self._manifest[app_id] = manifest
-
-                    # Fetch input schema with validation
-                    input_schema_url = f"https://{base_url}/schema?type=input"
-                    logging.info(f"[{app_id}] Fetching input schema from: {input_schema_url}")
-                    input_schema_response = self._session.get(input_schema_url, timeout=30)
-                    input_schema_response.raise_for_status()
-                    
-                    if not input_schema_response.text:
-                        raise Exception("Empty response received from input schema endpoint")
-                    
-                    input_schema = input_schema_response.json()
-                    logging.info(f"[{app_id}] Input schema loaded: {input_schema}")
-
-                    # Fetch output schema with validation
-                    output_schema_url = f"https://{base_url}/schema?type=output"
-                    logging.info(f"[{app_id}] Fetching output schema from: {output_schema_url}")
-                    output_schema_response = self._session.get(output_schema_url, timeout=30)
-                    output_schema_response.raise_for_status()
-                    
-                    if not output_schema_response.text:
-                        raise Exception("Empty response received from output schema endpoint")
-                    
-                    output_schema = output_schema_response.json()
-                    logging.info(f"[{app_id}] Output schema loaded: {output_schema}")
-                    self._schema[app_id] = (input_schema, output_schema)
-
-                    # Establish Remote WebSocket connection
-                    ws_url = f"wss://{base_url}/app"
-                    logging.info(f"[{app_id}] Establishing WebSocket connection to: {ws_url}")
-                    self._connections[app_id] = Remote(ws_url, f"{app_id}-proxy").connect()
-                    logging.info(f"[{app_id}] Connection established.")
-                    self._initialized_apps.append(app_id)
-                    break  # Success, exit retry loop
-
-                except requests.exceptions.RequestException as e:
-                    retry_count += 1
-                    if retry_count < max_retries:
-                        logging.warning(f"[{app_id}] Attempt {retry_count} failed: {str(e)}. Retrying in {self._retry_delay} seconds...")
-                        time.sleep(self._retry_delay)
-                    else:
-                        error_msg = f"Network error while connecting to {app_id} after {max_retries} attempts: {str(e)}"
-                        logging.error(error_msg)
-                        if self._require_all_apps:
-                            raise Exception(error_msg)
-                        else:
-                            failed_apps.append(app_id)
-                            logging.warning(f"App {app_id} failed to initialize, but continuing with available apps")
-                except json.JSONDecodeError as e:
-                    error_msg = f"Invalid JSON response from {app_id}: {str(e)}"
-                    logging.error(error_msg)
-                    if self._require_all_apps:
-                        raise Exception(error_msg)
-                    else:
-                        failed_apps.append(app_id)
-                        logging.warning(f"App {app_id} failed to initialize, but continuing with available apps")
-                except Exception as e:
-                    error_msg = f"Failed to initialize app {app_id}: {str(e)}"
-                    logging.error(error_msg)
-                    if self._require_all_apps:
-                        raise Exception(error_msg)
-                    else:
-                        failed_apps.append(app_id)
-                        logging.warning(f"App {app_id} failed to initialize, but continuing with available apps")
-
-        if not self._initialized_apps:
-            raise Exception("No apps were successfully initialized. Please check your app IDs and network connection.")
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
         
-        if failed_apps:
-            logging.warning(f"The following apps failed to initialize: {', '.join(failed_apps)}")
-            logging.info(f"Successfully initialized apps: {', '.join(self._initialized_apps)}")
+        # Initialize apps
+        self._initialize_apps()
+
+    def _initialize_apps(self):
+        """Initialize all apps and track their status."""
+        for app_id in self.app_ids:
+            try:
+                self._initialize_app(app_id)
+            except Exception as e:
+                logging.error(f"Failed to initialize app {app_id}: {str(e)}")
+                self.failed_apps.add(app_id)
+                if self.require_all_apps:
+                    raise Exception(f"Required app {app_id} failed to initialize")
+        
+        if self.failed_apps:
+            logging.warning(f"The following apps failed to initialize: {' '.join(self.failed_apps)}")
+        if self.initialized_apps:
+            logging.info(f"Successfully initialized apps: {' '.join(self.initialized_apps)}")
+    
+    def _initialize_app(self, app_id: str):
+        """Initialize a single app with retry logic."""
+        manifest_url = f"https://{app_id}/manifest"
+        
+        for attempt in range(self.max_retries):
+            try:
+                logging.info(f"[{app_id}] Fetching manifest from: {manifest_url}")
+                response = self.session.get(manifest_url, timeout=10)
+                response.raise_for_status()
+                
+                # Validate manifest
+                manifest = response.json()
+                if not manifest or not isinstance(manifest, dict):
+                    raise ValueError("Invalid manifest format")
+                
+                self.initialized_apps.add(app_id)
+                logging.info(f"[{app_id}] Successfully initialized")
+                return
+                
+            except requests.exceptions.RequestException as e:
+                if attempt < self.max_retries - 1:
+                    logging.warning(f"[{app_id}] Attempt {attempt + 1} failed: {str(e)}. Retrying in {self.retry_delay} seconds...")
+                    time.sleep(self.retry_delay)
+                else:
+                    raise Exception(f"Network error while connecting to {app_id} after {self.max_retries} attempts: {str(e)}")
+            except Exception as e:
+                raise Exception(f"Error initializing app {app_id}: {str(e)}")
 
     # ----------------------------------------------------------------------
     def call(self, app_id: str, data: Any, uid: str = 'super-user') -> dict:
         """
-        Sends a request to the specified app via its Remote connection.
-
+        Call an Openfabric app with retry logic.
+        
         Args:
-            app_id (str): The application ID to route the request to.
-            data (Any): The input data to send to the app.
-            uid (str): The unique user/session identifier for tracking (default: 'super-user').
-
+            app_id: The app ID to call
+            data: The data to send to the app
+            uid: The user ID making the request (defaults to 'super-user')
+            
         Returns:
-            dict: The output data returned by the app.
-
+            Dict containing the app's response
+            
         Raises:
-            Exception: If no connection is found for the provided app ID, or execution fails.
+            Exception if the app is not available or the call fails
         """
-        if app_id not in self._initialized_apps:
-            raise Exception(f"App {app_id} was not successfully initialized during startup")
-
-        connection = self._connections.get(app_id)
-        if not connection:
-            raise Exception(f"Connection not found for app ID: {app_id}")
-
-        try:
-            handler = connection.execute(data, uid)
-            result = connection.get_response(handler)
-
-            if not result:
-                raise Exception(f"No response received from app {app_id}")
-
-            schema = self.schema(app_id, 'output')
-            marshmallow = json_schema_to_marshmallow(schema)
-            handle_resources = has_resource_fields(marshmallow())
-
-            if handle_resources:
-                result = resolve_resources("https://" + app_id + "/resource?reid={reid}", result, marshmallow())
-
-            return result
-        except Exception as e:
-            logging.error(f"[{app_id}] Execution failed: {e}")
-            raise Exception(f"Failed to execute app {app_id}: {str(e)}")
+        if not self.is_app_available(app_id):
+            raise Exception(f"App {app_id} is not available")
+        
+        api_url = f"https://{app_id}/api"
+        full_url = f"{api_url}?uid={uid}"
+        
+        logging.info(f"Making API call to: {full_url}")
+        logging.info(f"Request data: {json.dumps(data, indent=2)}")
+        
+        for attempt in range(self.max_retries):
+            try:
+                # Add UID as a query parameter
+                response = self.session.post(
+                    full_url,
+                    json=data,
+                    timeout=30
+                )
+                response.raise_for_status()
+                
+                result = response.json()
+                logging.info(f"Response from {app_id}: {json.dumps(result, indent=2)}")
+                
+                if not result or not isinstance(result, dict):
+                    raise ValueError("Invalid response format")
+                
+                return result
+                
+            except requests.exceptions.RequestException as e:
+                if attempt < self.max_retries - 1:
+                    logging.warning(f"[{app_id}] API call attempt {attempt + 1} failed: {str(e)}. Retrying in {self.retry_delay} seconds...")
+                    time.sleep(self.retry_delay)
+                else:
+                    raise Exception(f"Failed to call app {app_id} after {self.max_retries} attempts: {str(e)}")
+            except Exception as e:
+                raise Exception(f"Error calling app {app_id}: {str(e)}")
 
     # ----------------------------------------------------------------------
     def manifest(self, app_id: str) -> dict:
@@ -224,31 +195,18 @@ class Stub:
         if type == 'input':
             if _input is None:
                 raise ValueError(f"Input schema not found for app ID: {app_id}")
-            return _input
+            return _input or {}
         elif type == 'output':
             if _output is None:
                 raise ValueError(f"Output schema not found for app ID: {app_id}")
-            return _output
+            return _output or {}
         else:
             raise ValueError("Type must be either 'input' or 'output'")
 
     def is_app_available(self, app_id: str) -> bool:
-        """
-        Check if a specific app is available and initialized.
-
-        Args:
-            app_id (str): The application ID to check.
-
-        Returns:
-            bool: True if the app is available, False otherwise.
-        """
-        return app_id in self._initialized_apps
+        """Check if an app is available."""
+        return app_id in self.initialized_apps
 
     def get_available_apps(self) -> List[str]:
-        """
-        Get a list of all successfully initialized apps.
-
-        Returns:
-            List[str]: List of available app IDs.
-        """
-        return self._initialized_apps.copy()
+        """Get list of successfully initialized apps."""
+        return list(self.initialized_apps)

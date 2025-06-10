@@ -12,6 +12,9 @@ from core.stub import Stub
 from core.llm import LocalLLM
 from core.memory import Memory
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
 # Configurations for the app
 configurations: Dict[str, ConfigClass] = dict()
 
@@ -69,11 +72,11 @@ def execute(model: AppModel) -> None:
 
     # Retrieve user config
     user_config: ConfigClass = configurations.get('super-user', None)
-    logging.info(f"{configurations}")
+    logging.info(f"Using configuration: {user_config}")
 
     # Initialize the Stub with app IDs
     app_ids = user_config.app_ids if user_config else []
-    stub = Stub(app_ids)
+    stub = Stub(app_ids, max_retries=5, retry_delay=2)
 
     try:
         # Step 1: Expand prompt using LLM
@@ -104,8 +107,6 @@ def execute(model: AppModel) -> None:
         # Prepare response
         response: OutputClass = model.response
         response.message = f"Successfully generated image and 3D model from prompt: {request.prompt}"
-        
-        # Add paths to response
         response.image_path = image_path
         response.model_path = model_path
 

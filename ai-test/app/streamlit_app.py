@@ -7,6 +7,10 @@ from io import BytesIO
 import json
 from datetime import datetime
 import logging
+import re
+import requests
+import asyncio
+import nest_asyncio
 
 from core.llm import LocalLLM
 from core.memory import Memory
@@ -16,62 +20,111 @@ from ontology_dc8f06af066e4a7880a5938933236037.config import ConfigClass
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 
+# Apply nest_asyncio to allow nested event loops
+nest_asyncio.apply()
+
+# Initialize Stub with app IDs
+TEXT_TO_IMAGE_APP = 'f0997a01-d6d3-a5fe-53d8-561300318557'
+IMAGE_TO_3D_APP = '69543f29-4d41-4afc-7f29-3d51591f11eb'
+stub = Stub([TEXT_TO_IMAGE_APP, IMAGE_TO_3D_APP], max_retries=3, retry_delay=1, require_all_apps=False)
+
+# Initialize service status
+service_status = {
+    TEXT_TO_IMAGE_APP: False,
+    IMAGE_TO_3D_APP: False
+}
+
+def initialize_services():
+    """Initialize services and update their status."""
+    try:
+        # Try to initialize Text-to-Image service
+        if stub._initialize_app(TEXT_TO_IMAGE_APP):
+            service_status[TEXT_TO_IMAGE_APP] = True
+            logging.info(f"Text-to-Image service initialized successfully")
+        
+        # Try to initialize Image-to-3D service
+        if stub._initialize_app(IMAGE_TO_3D_APP):
+            service_status[IMAGE_TO_3D_APP] = True
+            logging.info(f"Image-to-3D service initialized successfully")
+    except Exception as e:
+        logging.error(f"Error initializing services: {str(e)}")
+
+# Initialize services in the background
+initialize_services()
+
+def sanitize_filename(filename: str) -> str:
+    """Sanitize filename by removing invalid characters."""
+    # Remove invalid characters and replace spaces with underscores
+    sanitized = re.sub(r'[<>:"/\\|?*\n\r\t]', '', filename)
+    sanitized = sanitized.replace(' ', '_')
+    # Limit length and ensure it's not empty
+    return sanitized[:50] if sanitized else "untitled"
+
+def save_image(image_data: bytes, prompt: str) -> str:
+    """Save generated image and return the path."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_prompt = sanitize_filename(prompt)
+    filename = f"generated/images/{timestamp}_{safe_prompt}.png"
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    with open(filename, "wb") as f:
+        f.write(image_data)
+    return filename
+
+def save_model(model_data: bytes, prompt: str) -> str:
+    """Save generated 3D model and return the path."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_prompt = sanitize_filename(prompt)
+    filename = f"generated/models/{timestamp}_{safe_prompt}.glb"
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    with open(filename, "wb") as f:
+        f.write(model_data)
+    return filename
+
+def call_text_to_image(prompt: str) -> bytes:
+    """Call the Text-to-Image service using Stub."""
+    try:
+        # Create a new event loop for this call
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        logging.info(f"Calling Text-to-Image service with prompt: {prompt}")
+        response = stub.call(TEXT_TO_IMAGE_APP, {'prompt': prompt}, 'super-user')
+        if not response or 'result' not in response:
+            raise ValueError("Invalid response format")
+        return base64.b64decode(response['result'])
+    except Exception as e:
+        logging.error(f"Text-to-Image API error: {str(e)}")
+        st.error(f"Text-to-Image API error: {str(e)}")
+        raise
+    finally:
+        loop.close()
+
+def call_image_to_3d(image_data: bytes) -> bytes:
+    """Call the Image-to-3D service using Stub."""
+    try:
+        # Create a new event loop for this call
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        # Convert image to base64
+        image_b64 = base64.b64encode(image_data).decode('utf-8')
+        logging.info("Calling Image-to-3D service")
+        response = stub.call(IMAGE_TO_3D_APP, {'image': image_b64}, 'super-user')
+        if not response or 'result' not in response:
+            raise ValueError("Invalid response format")
+        return base64.b64decode(response['result'])
+    except Exception as e:
+        logging.error(f"Image-to-3D API error: {str(e)}")
+        st.error(f"Image-to-3D API error: {str(e)}")
+        raise
+    finally:
+        loop.close()
+
 # Initialize session state
 if 'llm' not in st.session_state:
     st.session_state.llm = LocalLLM()
 if 'memory' not in st.session_state:
     st.session_state.memory = Memory()
-if 'stub' not in st.session_state:
-    try:
-        # Initialize with proper configuration
-        config = ConfigClass()
-        # Use correct app IDs from documentation
-        config.app_ids = [
-            'c25dcd829d134ea98f5ae4dd311d13bc.node3.openfabric.network',  # Text to Image
-            'f0b5f319156c4819b9827000b17e511a.node3.openfabric.network'   # Image to 3D
-        ]
-        # Initialize Stub with retry configuration
-        st.session_state.stub = Stub(
-            config.app_ids,
-            max_retries=3,  # Number of retry attempts
-            retry_delay=5,  # Delay between retries in seconds
-            require_all_apps=False  # Allow partial initialization
-        )
-        
-        # Check which apps are available
-        available_apps = st.session_state.stub.get_available_apps()
-        if len(available_apps) == len(config.app_ids):
-            st.success("Successfully connected to all Openfabric services!")
-        else:
-            st.warning("Some Openfabric services are currently unavailable:")
-            if 'c25dcd829d134ea98f5ae4dd311d13bc.node3.openfabric.network' in available_apps:
-                st.success("✓ Text-to-Image service is available")
-            else:
-                st.error("✗ Text-to-Image service is unavailable")
-            
-            if 'f0b5f319156c4819b9827000b17e511a.node3.openfabric.network' in available_apps:
-                st.success("✓ Image-to-3D service is available")
-            else:
-                st.error("✗ Image-to-3D service is unavailable")
-            
-            st.info("The application will continue with available services.")
-    except Exception as e:
-        st.error(f"Failed to initialize Openfabric services: {str(e)}")
-        st.error("Please check your internet connection and try again.")
-        st.error("If the problem persists, please verify your Openfabric credentials and app IDs.")
-        st.stop()  # Stop the app if initialization fails
-
-# Create directories for storing generated content
-os.makedirs("generated/images", exist_ok=True)
-os.makedirs("generated/models", exist_ok=True)
-
-def save_image(image_data: bytes, prompt: str) -> str:
-    """Save generated image and return the path."""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"generated/images/{timestamp}_{prompt[:30]}.png"
-    with open(filename, "wb") as f:
-        f.write(image_data)
-    return filename
 
 def display_image(image_path: str):
     """Display an image in the Streamlit interface."""
@@ -89,6 +142,21 @@ def main():
     st.title("🎨 AI Creative Image-3D Generator")
     st.write("Transform your ideas into stunning visuals and 3D models!")
 
+    # Show current configuration and service status
+    st.sidebar.header("Configuration")
+    st.sidebar.write("Text-to-Image App ID:", TEXT_TO_IMAGE_APP)
+    st.sidebar.write("Image-to-3D App ID:", IMAGE_TO_3D_APP)
+    st.sidebar.write("User ID: super-user")
+    
+    # Show service status
+    st.sidebar.header("Service Status")
+    st.sidebar.write("Text-to-Image Service:", "✅ Available" if service_status[TEXT_TO_IMAGE_APP] else "❌ Unavailable")
+    st.sidebar.write("Image-to-3D Service:", "✅ Available" if service_status[IMAGE_TO_3D_APP] else "❌ Unavailable")
+    
+    if not service_status[TEXT_TO_IMAGE_APP]:
+        st.error("Text-to-Image service is currently unavailable. Please try again later.")
+        return
+
     # Input section
     prompt = st.text_area("Enter your creative idea:", 
                          placeholder="e.g., 'Make me a glowing dragon standing on a cliff at sunset'")
@@ -101,30 +169,9 @@ def main():
                     expanded_prompt = st.session_state.llm.expand_prompt(prompt)
                     st.write("Expanded Description:", expanded_prompt)
 
-                    # Step 2: Generate image using Openfabric Text-to-Image app
-                    text_to_image_app = 'c25dcd829d134ea98f5ae4dd311d13bc.node3.openfabric.network'
-                    if not st.session_state.stub.is_app_available(text_to_image_app):
-                        raise Exception("Text-to-Image service is currently unavailable")
-                    
-                    logging.info(f"Calling Text-to-Image app with prompt: {expanded_prompt}")
-                    
+                    # Step 2: Generate image using Text-to-Image service
                     try:
-                        image_response = st.session_state.stub.call(
-                            text_to_image_app, 
-                            {'prompt': expanded_prompt}, 
-                            'super-user'
-                        )
-                        if not image_response:
-                            raise Exception("No response received from Text-to-Image app")
-                        
-                        image_data = image_response.get('result')
-                        if not image_data:
-                            raise Exception("No image data received from Text-to-Image app")
-                        
-                        # Convert base64 image data to bytes if needed
-                        if isinstance(image_data, str):
-                            image_data = base64.b64decode(image_data)
-                        
+                        image_data = call_text_to_image(expanded_prompt)
                         image_path = save_image(image_data, prompt)
                         logging.info(f"Image saved to: {image_path}")
                         
@@ -132,24 +179,10 @@ def main():
                         st.success("Image generated successfully!")
                         display_image(image_path)
                         
-                        # Step 3: Convert to 3D using Openfabric Image-to-3D app
-                        image_to_3d_app = 'f0b5f319156c4819b9827000b17e511a.node3.openfabric.network'
-                        if st.session_state.stub.is_app_available(image_to_3d_app):
-                            logging.info("Calling Image-to-3D app")
-                            
+                        # Step 3: Convert to 3D using Image-to-3D service (only if available)
+                        if service_status[IMAGE_TO_3D_APP]:
                             try:
-                                model_response = st.session_state.stub.call(
-                                    image_to_3d_app, 
-                                    {'image': image_data}, 
-                                    'super-user'
-                                )
-                                if not model_response:
-                                    raise Exception("No response received from Image-to-3D app")
-                                
-                                model_data = model_response.get('result')
-                                if not model_data:
-                                    raise Exception("No model data received from Image-to-3D app")
-                                
+                                model_data = call_image_to_3d(image_data)
                                 model_path = save_model(model_data, prompt)
                                 logging.info(f"3D model saved to: {model_path}")
                                 st.success("3D model generated successfully!")
@@ -157,7 +190,7 @@ def main():
                                 logging.error(f"3D model generation error: {str(e)}")
                                 st.warning("3D model generation failed. The image was still generated successfully.")
                         else:
-                            st.warning("Image-to-3D service is currently unavailable. Only image generation is available.")
+                            st.info("3D model generation is currently unavailable. Only image generation is active.")
 
                         # Store in memory
                         embedding = st.session_state.llm.get_embedding(prompt)
@@ -169,9 +202,9 @@ def main():
                         )
 
                     except Exception as e:
-                        logging.error(f"Openfabric API error: {str(e)}")
-                        st.error("Failed to connect to Openfabric services. Please check your internet connection and try again.")
-                        st.error("If the problem persists, please verify your Openfabric credentials and app IDs.")
+                        logging.error(f"Image generation error: {str(e)}")
+                        st.error(f"Image generation error: {str(e)}")
+                        st.error("Please check the logs for more details.")
 
                 except Exception as e:
                     logging.error(f"Error during generation: {str(e)}")
@@ -190,14 +223,6 @@ def main():
                     st.write("Prompt:", memory['prompt'])
                     if memory['image_path'] and os.path.exists(memory['image_path']):
                         display_image(memory['image_path'])
-
-def save_model(model_data: bytes, prompt: str) -> str:
-    """Save generated 3D model and return the path."""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"generated/models/{timestamp}_{prompt[:30]}.glb"
-    with open(filename, "wb") as f:
-        f.write(model_data)
-    return filename
 
 if __name__ == "__main__":
     main() 
